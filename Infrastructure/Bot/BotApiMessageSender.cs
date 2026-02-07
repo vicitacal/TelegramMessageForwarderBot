@@ -3,6 +3,9 @@ using TelegramMessageForwarder.Application.Bot;
 using TelegramMessageForwarder.Application.Messaging;
 using TelegramMessageForwarder.Application.Secrets;
 using TelegramMessageForwarder.Domain.Messages;
+using Telegram.Bot;
+using Telegram.Bot.Requests;
+using Telegram.Bot.Types;
 
 namespace TelegramMessageForwarder.Infrastructure.Bot;
 
@@ -61,7 +64,7 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
     private async Task SendTextToChatAsync(long chatId, string text, CancellationToken cancellationToken)
     {
         var botToken = secretProvider.GetSecret(BotTokenSecretKey);
-        var client = new Telegram.Bot.TelegramBotClient(botToken);
+        var client = new TelegramBotClient(botToken, cancellationToken: cancellationToken);
 
         Exception? lastException = null;
 
@@ -69,7 +72,8 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
         {
             try
             {
-                await client.SendMessageAsync(chatId: chatId, text: text, cancellationToken: cancellationToken);
+                var request = new SendMessageRequest(new ChatId(chatId), text);
+                await client.SendRequest(request, cancellationToken);
                 return;
             }
             catch (Exception ex)

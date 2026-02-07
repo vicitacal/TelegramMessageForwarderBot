@@ -3,6 +3,8 @@ using TelegramMessageForwarder.Application.Bot;
 using TelegramMessageForwarder.Application.Secrets;
 using TelegramMessageForwarder.Domain.Messages;
 using TelegramMessageForwarder.Domain.ValueObjects;
+using Telegram.Bot;
+using Telegram.Bot.Types;
 
 namespace TelegramMessageForwarder.Infrastructure.Bot;
 
@@ -22,26 +24,26 @@ public sealed class TelegramBotUpdateReceiver : IBotUpdateReceiver
     public async Task StartAsync(Func<BotUpdate, CancellationToken, Task> updateHandler, CancellationToken cancellationToken)
     {
         var botToken = secretProvider.GetSecret(BotTokenSecretKey);
-        var client = new Telegram.Bot.TelegramBotClient(botToken);
+        var client = new TelegramBotClient(botToken, cancellationToken: cancellationToken);
 
         Logger.Info("Starting Bot API update receiver.");
 
-        await client.ReceiveAsync(
-            async (client, update, ct) =>
+        client.OnUpdate += async (update) =>
+        {
+            if (update.Message is not { } message)
             {
-                if (update.Message is not { } message)
-                {
-                    return;
-                }
+                return;
+            }
 
-                var chatMessage = MapToChatMessage(message);
-                var botUpdate = new BotUpdate(chatMessage);
-                await updateHandler(botUpdate, ct);
-            },
-            cancellationToken: cancellationToken);
+            var chatMessage = MapToChatMessage(message);
+            var botUpdate = new BotUpdate(chatMessage);
+            await updateHandler(botUpdate, cancellationToken);
+        };
+
+        await Task.Delay(Timeout.Infinite, cancellationToken);
     }
 
-    private static ChatMessage MapToChatMessage(Telegram.Bot.Types.Message message)
+    private static ChatMessage MapToChatMessage(Message message)
     {
         var messageId = new MessageId(message.Id);
         var chatId = new ChatId(message.Chat.Id);

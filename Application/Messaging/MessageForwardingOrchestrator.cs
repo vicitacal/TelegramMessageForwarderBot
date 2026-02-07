@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using TelegramMessageForwarder.Application.Bot;
 using TelegramMessageForwarder.Application.Commands;
 using TelegramMessageForwarder.Application.Configuration;
 using TelegramMessageForwarder.Application.Messages;
@@ -12,6 +13,7 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
     private readonly IMessageSender messageSender;
     private readonly IMessageProcessingUseCase messageProcessingUseCase;
     private readonly IForwardingConfigurationProvider configurationProvider;
+    private readonly IBotUpdateReceiver botUpdateReceiver;
     private readonly ICommandParser commandParser;
     private readonly ICommandHandlerRegistry commandHandlerRegistry;
 
@@ -20,6 +22,7 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
         IMessageSender messageSender,
         IMessageProcessingUseCase messageProcessingUseCase,
         IForwardingConfigurationProvider configurationProvider,
+        IBotUpdateReceiver botUpdateReceiver,
         ICommandParser commandParser,
         ICommandHandlerRegistry commandHandlerRegistry)
     {
@@ -27,27 +30,34 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
         this.messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
         this.messageProcessingUseCase = messageProcessingUseCase ?? throw new ArgumentNullException(nameof(messageProcessingUseCase));
         this.configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+        this.botUpdateReceiver = botUpdateReceiver ?? throw new ArgumentNullException(nameof(botUpdateReceiver));
         this.commandParser = commandParser ?? throw new ArgumentNullException(nameof(commandParser));
         this.commandHandlerRegistry = commandHandlerRegistry ?? throw new ArgumentNullException(nameof(commandHandlerRegistry));
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        var configuration = await configurationProvider.GetConfigurationAsync(cancellationToken);
-
-        await messageSource.StartAsync(
-            async (message, ct) =>
+        var botTask = botUpdateReceiver.StartAsync(
+            async (botUpdate, ct) =>
             {
-                if (commandParser.TryParse(message, out var command) && command != null)
+                var message = botUpdate.Message;
+                if (!commandParser.TryParse(message, out var command) || command == null)
                 {
-                    var handler = commandHandlerRegistry.GetHandler(command.Name);
-                    if (handler != null)
-                    {
-                        await handler.HandleAsync(command, message, ct);
-                        return;
-                    }
+                    return;
                 }
 
+                var handler = commandHandlerRegistry.GetHandler(command.Name);
+                if (handler != null)
+                {
+                    await handler.HandleAsync(command, message, ct);
+                }
+            },
+            cancellationToken);
+
+        var forwardTask = messageSource.StartAsync(
+            async (message, ct) =>
+            {
+                var configuration = await configurationProvider.GetConfigurationAsync(ct);
                 var result = messageProcessingUseCase.Process(message, configuration);
 
                 if (!result.ShouldBeForwarded)
@@ -58,6 +68,8 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
                 await messageSender.SendAsync(message, ct);
             },
             cancellationToken);
+
+        await Task.WhenAll(botTask, forwardTask);
     }
 }
 
