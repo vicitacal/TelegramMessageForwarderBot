@@ -1,8 +1,11 @@
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace TelegramMessageForwarder.Application.Bot;
 
 public interface IDestinationChatIdStore
 {
-    long? Get();
+    Task<long?> GetAsync(CancellationToken cancellationToken);
 
-    void Set(long chatId);
+    Task SetAsync(long chatId, CancellationToken cancellationToken);
 }

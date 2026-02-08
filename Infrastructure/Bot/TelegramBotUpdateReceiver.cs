@@ -5,6 +5,8 @@ using TelegramMessageForwarder.Domain.Messages;
 using TelegramMessageForwarder.Domain.ValueObjects;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using ChatId = TelegramMessageForwarder.Domain.ValueObjects.ChatId;
+using MessageId = TelegramMessageForwarder.Domain.ValueObjects.MessageId;
 
 namespace TelegramMessageForwarder.Infrastructure.Bot;
 
@@ -23,7 +25,7 @@ public sealed class TelegramBotUpdateReceiver : IBotUpdateReceiver
 
     public async Task StartAsync(Func<BotUpdate, CancellationToken, Task> updateHandler, CancellationToken cancellationToken)
     {
-        var botToken = secretProvider.GetSecret(BotTokenSecretKey);
+        var botToken = secretProvider.GetSecret(BotTokenSecretKey) ?? throw new Exception("Bot api token is required for continue");
         var client = new TelegramBotClient(botToken, cancellationToken: cancellationToken);
 
         Logger.Info("Starting Bot API update receiver.");

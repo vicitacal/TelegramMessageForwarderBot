@@ -11,7 +11,7 @@ public sealed class EnvironmentSecretProvider : ISecretProvider
         this.prefix = prefix;
     }
 
-    public string GetSecret(string name)
+    public string? GetSecret(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -20,14 +20,7 @@ public sealed class EnvironmentSecretProvider : ISecretProvider
 
         var environmentVariableName = prefix == null ? name : $"{prefix}{name}";
 
-        var value = Environment.GetEnvironmentVariable(environmentVariableName);
-
-        if (string.IsNullOrEmpty(value))
-        {
-            throw new InvalidOperationException($"Secret '{name}' was not found in environment variables.");
-        }
-
-        return value;
+        return Environment.GetEnvironmentVariable(environmentVariableName, EnvironmentVariableTarget.User);
     }
 }
 

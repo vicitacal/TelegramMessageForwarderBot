@@ -4,7 +4,7 @@ using WTelegram;
 
 namespace TelegramMessageForwarder.Infrastructure.Telegram;
 
-public sealed class TelegramClientProvider : ITelegramClientProvider
+public sealed class TelegramClientProvider : ITelegramClientProvider, IAsyncDisposable
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
@@ -17,6 +17,8 @@ public sealed class TelegramClientProvider : ITelegramClientProvider
 
     private readonly ISecretProvider secretProvider;
     private readonly ConnectionRetryOptions retryOptions;
+    private readonly SemaphoreSlim clientLock = new(1, 1);
+    private Client? sharedClient;
 
     public TelegramClientProvider(ISecretProvider secretProvider, ConnectionRetryOptions? retryOptions = null)
     {
@@ -26,40 +28,87 @@ public sealed class TelegramClientProvider : ITelegramClientProvider
 
     public async Task<Client> CreateClientAsync(CancellationToken cancellationToken)
     {
-        var delayMs = retryOptions.InitialDelayMs;
-        Exception? lastException = null;
+        await clientLock.WaitAsync(cancellationToken);
 
-        for (var attempt = 1; attempt <= retryOptions.MaxRetries; attempt++)
+        try
         {
+            if (sharedClient != null)
+            {
+                return sharedClient;
+            }
+
+            var delayMs = retryOptions.InitialDelayMs;
+            Exception? lastException = null;
+
+            for (var attempt = 1; attempt <= retryOptions.MaxRetries; attempt++)
+            {
+                try
+                {
+                    Logger.Info("Connecting to Telegram (attempt {Attempt}/{MaxRetries}).", attempt, retryOptions.MaxRetries);
+
+                    var client = new Client(GetConfigValue);
+                    await client.LoginUserIfNeeded();
+
+                    Logger.Info("Connected to Telegram.");
+                    sharedClient = client;
+                    return sharedClient;
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    Logger.Warn(ex, "Telegram connection attempt {Attempt}/{MaxRetries} failed.", attempt, retryOptions.MaxRetries);
+
+                    if (attempt == retryOptions.MaxRetries)
+                    {
+                        break;
+                    }
+
+                    var delay = TimeSpan.FromMilliseconds(Math.Min(delayMs, retryOptions.MaxDelayMs));
+                    Logger.Info("Retrying in {DelayMs} ms.", delay.TotalMilliseconds);
+                    await Task.Delay(delay, cancellationToken);
+                    delayMs = (int)(delayMs * retryOptions.BackoffMultiplier);
+                }
+            }
+
+            throw new InvalidOperationException("Failed to connect to Telegram after all retries.", lastException);
+        }
+        finally
+        {
+            clientLock.Release();
+        }
+    }
+
+    public async Task InvalidateClientAsync(CancellationToken cancellationToken)
+    {
+        await clientLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            if (sharedClient == null)
+            {
+                return;
+            }
+
             try
             {
-                Logger.Info("Connecting to Telegram (attempt {Attempt}/{MaxRetries}).", attempt, retryOptions.MaxRetries);
-
-                var client = new Client(GetConfigValue);
-                await client.LoginUserIfNeeded();
-
-                Logger.Info("Connected to Telegram.");
-
-                return client;
+                await sharedClient.DisposeAsync();
             }
             catch (Exception ex)
             {
-                lastException = ex;
-                Logger.Warn(ex, "Telegram connection attempt {Attempt}/{MaxRetries} failed.", attempt, retryOptions.MaxRetries);
-
-                if (attempt == retryOptions.MaxRetries)
-                {
-                    break;
-                }
-
-                var delay = TimeSpan.FromMilliseconds(Math.Min(delayMs, retryOptions.MaxDelayMs));
-                Logger.Info("Retrying in {DelayMs} ms.", delay.TotalMilliseconds);
-                await Task.Delay(delay, cancellationToken);
-                delayMs = (int)(delayMs * retryOptions.BackoffMultiplier);
+                Logger.Warn(ex, "Error disposing Telegram client.");
             }
-        }
 
-        throw new InvalidOperationException("Failed to connect to Telegram after all retries.", lastException);
+            sharedClient = null;
+        }
+        finally
+        {
+            clientLock.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await InvalidateClientAsync(CancellationToken.None);
     }
 
     private string? GetConfigValue(string name)
@@ -76,4 +125,3 @@ public sealed class TelegramClientProvider : ITelegramClientProvider
         };
     }
 }
-

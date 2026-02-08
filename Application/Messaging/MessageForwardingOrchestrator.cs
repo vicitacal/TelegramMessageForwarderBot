@@ -16,6 +16,8 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
     private readonly IBotUpdateReceiver botUpdateReceiver;
     private readonly ICommandParser commandParser;
     private readonly ICommandHandlerRegistry commandHandlerRegistry;
+    private readonly IAllowedUserIdStore allowedUserIdStore;
+    private readonly IResponseSender responseSender;
 
     public MessageForwardingOrchestrator(
         IMessageSource messageSource,
@@ -24,7 +26,9 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
         IForwardingConfigurationProvider configurationProvider,
         IBotUpdateReceiver botUpdateReceiver,
         ICommandParser commandParser,
-        ICommandHandlerRegistry commandHandlerRegistry)
+        ICommandHandlerRegistry commandHandlerRegistry,
+        IAllowedUserIdStore allowedUserIdStore,
+        IResponseSender responseSender)
     {
         this.messageSource = messageSource ?? throw new ArgumentNullException(nameof(messageSource));
         this.messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
@@ -33,6 +37,8 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
         this.botUpdateReceiver = botUpdateReceiver ?? throw new ArgumentNullException(nameof(botUpdateReceiver));
         this.commandParser = commandParser ?? throw new ArgumentNullException(nameof(commandParser));
         this.commandHandlerRegistry = commandHandlerRegistry ?? throw new ArgumentNullException(nameof(commandHandlerRegistry));
+        this.allowedUserIdStore = allowedUserIdStore ?? throw new ArgumentNullException(nameof(allowedUserIdStore));
+        this.responseSender = responseSender ?? throw new ArgumentNullException(nameof(responseSender));
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -41,8 +47,20 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
             async (botUpdate, ct) =>
             {
                 var message = botUpdate.Message;
+                var senderId = message.SenderId.Value;
+
                 if (!commandParser.TryParse(message, out var command) || command == null)
                 {
+                    return;
+                }
+
+                if (!(await allowedUserIdStore.GetOwnerIdAsync(ct)).HasValue && string.Equals(command.Name, "start", StringComparison.OrdinalIgnoreCase))
+                {
+                    await allowedUserIdStore.SetOwnerIfNotSetAsync(senderId, ct);
+                }
+                else if (!await allowedUserIdStore.IsAllowedAsync(senderId, ct))
+                {
+                    await responseSender.SendToChatAsync("You are not authorized to use this bot.", message.ChatId.Value, ct);
                     return;
                 }
 
@@ -55,7 +73,7 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
             cancellationToken);
 
         var forwardTask = messageSource.StartAsync(
-            async (message, ct) =>
+            async (message, forwardContext, ct) =>
             {
                 var configuration = await configurationProvider.GetConfigurationAsync(ct);
                 var result = messageProcessingUseCase.Process(message, configuration);
@@ -65,7 +83,7 @@ public sealed class MessageForwardingOrchestrator : IMessageForwardingOrchestrat
                     return;
                 }
 
-                await messageSender.SendAsync(message, ct);
+                await messageSender.SendAsync(message, forwardContext, ct);
             },
             cancellationToken);
 

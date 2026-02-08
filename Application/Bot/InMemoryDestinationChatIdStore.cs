@@ -1,15 +1,18 @@
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace TelegramMessageForwarder.Application.Bot;
 
 public sealed class InMemoryDestinationChatIdStore : IDestinationChatIdStore
 {
     private long? chatId;
 
-    public long? Get()
+    public Task<long?> GetAsync(CancellationToken cancellationToken)
     {
-        return chatId;
+        return Task.FromResult(chatId);
     }
 
-    public void Set(long destinationChatId)
+    public Task SetAsync(long destinationChatId, CancellationToken cancellationToken)
     {
         if (destinationChatId == 0)
         {
@@ -17,5 +20,6 @@ public sealed class InMemoryDestinationChatIdStore : IDestinationChatIdStore
         }
 
         chatId = destinationChatId;
+        return Task.CompletedTask;
     }
 }

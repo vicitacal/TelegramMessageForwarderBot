@@ -36,10 +36,15 @@ ScaffoldingReadMe.txt
 # NuGet Symbol Packages
 *.snupkg
 
+# Local env (secrets)
+.env
+env.local
+
 # Others
 ~$*
 *~
 CodeCoverage/
+.vs
 
 # MSBuild Binary and Structured Log
 *.binlog

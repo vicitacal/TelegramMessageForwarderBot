@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using NLog;
 using TelegramMessageForwarder.Application.Messaging;
 using TelegramMessageForwarder.Domain.Messages;
@@ -19,7 +18,7 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
         this.clientProvider = clientProvider ?? throw new ArgumentNullException(nameof(clientProvider));
     }
 
-    public async Task StartAsync(Func<ChatMessage, CancellationToken, Task> messageHandler, CancellationToken cancellationToken)
+    public async Task StartAsync(Func<ChatMessage, object?, CancellationToken, Task> messageHandler, CancellationToken cancellationToken)
     {
         if (messageHandler == null)
         {
@@ -33,13 +32,13 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
         {
             try
             {
-                using var client = await clientProvider.CreateClientAsync(cancellationToken);
+                var client = await clientProvider.CreateClientAsync(cancellationToken);
 
                 delayMs = retryOptions.InitialDelayMs;
 
                 Logger.Info("Starting Telegram message source.");
 
-                var channel = System.Threading.Channels.Channel.CreateUnbounded<ChatMessage>();
+                var channel = System.Threading.Channels.Channel.CreateUnbounded<(ChatMessage Message, object? ForwardContext)>();
 
                 client.OnUpdates += async (update) =>
                 {
@@ -66,13 +65,14 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
                             continue;
                         }
 
-                        await channel.Writer.WriteAsync(chatMessage, cancellationToken);
+                        var forwardContext = TryBuildForwardContext(updatesBase, message);
+                        await channel.Writer.WriteAsync((chatMessage, forwardContext), cancellationToken);
                     }
                 };
 
-                await foreach (var chatMessage in channel.Reader.ReadAllAsync(cancellationToken))
+                await foreach (var (msg, forwardContext) in channel.Reader.ReadAllAsync(cancellationToken))
                 {
-                    await messageHandler(chatMessage, cancellationToken);
+                    await messageHandler(msg, forwardContext, cancellationToken);
                 }
             }
             catch (OperationCanceledException)
@@ -82,6 +82,7 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
             catch (Exception ex)
             {
                 Logger.Warn(ex, "Telegram message source connection lost. Reconnecting in {DelayMs} ms.", delayMs);
+                await clientProvider.InvalidateClientAsync(cancellationToken);
                 await Task.Delay(Math.Min(delayMs, retryOptions.MaxDelayMs), cancellationToken);
                 delayMs = (int)(delayMs * retryOptions.BackoffMultiplier);
             }
@@ -115,6 +116,40 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
         var isOutgoing = false; //What is the correct way to determine this?
 
         return new ChatMessage(messageId, chatId, senderId, text, occurredAtUtc, isOutgoing);
+    }
+
+    private static object? TryBuildForwardContext(UpdatesBase updatesBase, Message message)
+    {
+        var inputPeer = TryGetInputPeer(updatesBase, message.Peer);
+        if (inputPeer == null)
+        {
+            return null;
+        }
+
+        return (inputPeer, message.ID);
+    }
+
+    private static InputPeer? TryGetInputPeer(UpdatesBase updatesBase, Peer peer)
+    {
+        switch (peer)
+        {
+            case PeerChannel peerChannel:
+                if (updatesBase.Chats?.FirstOrDefault(c => c.Value is Channel ch && ch.id == peerChannel.channel_id).Value is not Channel channel) {
+                    return null;
+                }
+                return new InputPeerChannel(channel.id, channel.access_hash);
+            case PeerChat peerChat:
+                return new InputPeerChat(peerChat.chat_id);
+            case PeerUser peerUser:
+                var user = updatesBase.Users?.FirstOrDefault(u => u.Value.id == peerUser.user_id);
+                if (user?.Value == null)
+                {
+                    return null;
+                }
+                return new InputPeerUser(user.Value.Value.id, user.Value.Value.access_hash);
+            default:
+                return null;
+        }
     }
 }
 

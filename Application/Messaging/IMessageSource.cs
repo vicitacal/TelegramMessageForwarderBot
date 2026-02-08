@@ -6,6 +6,6 @@ namespace TelegramMessageForwarder.Application.Messaging;
 
 public interface IMessageSource
 {
-    Task StartAsync(Func<ChatMessage, CancellationToken, Task> messageHandler, CancellationToken cancellationToken);
+    Task StartAsync(Func<ChatMessage, object?, CancellationToken, Task> messageHandler, CancellationToken cancellationToken);
 }
 

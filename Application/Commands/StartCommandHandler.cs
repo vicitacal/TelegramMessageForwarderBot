@@ -24,7 +24,7 @@ public sealed class StartCommandHandler : ICommandHandler
 
     public async Task HandleAsync(Command command, ChatMessage message, CancellationToken cancellationToken)
     {
-        destinationStore.Set(message.ChatId.Value);
+        await destinationStore.SetAsync(message.ChatId.Value, cancellationToken);
         await responseSender.SendAsync(WelcomeMessage, cancellationToken);
     }
 }

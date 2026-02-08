@@ -54,7 +54,7 @@ public sealed class ForwardingConfiguration
         var configuration = chatConfigurations.FirstOrDefault(c => c.SourceChatId.Equals(message.ChatId));
         if (configuration == null)
         {
-            return new ForwardingDecision(true, ForwardingDecisionReason.NoConfiguration);
+            return new ForwardingDecision(false, ForwardingDecisionReason.NoConfiguration);
         }
 
         return configuration.Decide(message);

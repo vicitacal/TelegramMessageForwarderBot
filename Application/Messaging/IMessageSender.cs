@@ -6,6 +6,6 @@ namespace TelegramMessageForwarder.Application.Messaging;
 
 public interface IMessageSender
 {
-    Task SendAsync(ChatMessage message, CancellationToken cancellationToken);
+    Task SendAsync(ChatMessage message, object? forwardContext, CancellationToken cancellationToken);
 }
 
