@@ -9,6 +9,7 @@ using TelegramMessageForwarder.Domain.Messages;
 using Telegram.Bot;
 using Telegram.Bot.Requests;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using TL;
 using WTelegram;
 
@@ -25,17 +26,20 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
     private readonly IDestinationChatIdStore destinationStore;
     private readonly ISecretProvider secretProvider;
     private readonly ITelegramClientProvider telegramClientProvider;
+    private readonly ISourcePeerResolver sourcePeerResolver;
     private readonly SemaphoreSlim botPeerLock = new(1, 1);
     private InputPeer? cachedBotPeer;
 
     public BotApiMessageSender(
         IDestinationChatIdStore destinationStore,
         ISecretProvider secretProvider,
-        ITelegramClientProvider telegramClientProvider)
+        ITelegramClientProvider telegramClientProvider,
+        ISourcePeerResolver sourcePeerResolver)
     {
         this.destinationStore = destinationStore ?? throw new ArgumentNullException(nameof(destinationStore));
         this.secretProvider = secretProvider ?? throw new ArgumentNullException(nameof(secretProvider));
         this.telegramClientProvider = telegramClientProvider ?? throw new ArgumentNullException(nameof(telegramClientProvider));
+        this.sourcePeerResolver = sourcePeerResolver ?? throw new ArgumentNullException(nameof(sourcePeerResolver));
     }
 
     public async Task SendAsync(string text, CancellationToken cancellationToken)
@@ -77,9 +81,9 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
             throw new ArgumentNullException(nameof(message));
         }
 
-        if (forwardContext is (InputPeer fromPeer, int messageId))
+        if (forwardContext is (long sourceChatId, int messageId))
         {
-            await ForwardMessageViaMtProtoAsync(fromPeer, messageId, message, cancellationToken);
+            await ForwardMessageViaMtProtoAsync(sourceChatId, messageId, message, cancellationToken);
             return;
         }
 
@@ -94,12 +98,21 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
         await SendTextToChatAsync(chatId.Value, message.Text.Value, cancellationToken);
     }
 
-    private async Task ForwardMessageViaMtProtoAsync(InputPeer fromPeer, int messageId, ChatMessage message, CancellationToken cancellationToken)
+    private async Task ForwardMessageViaMtProtoAsync(long sourceChatId, int messageId, ChatMessage message, CancellationToken cancellationToken)
     {
         var chatId = await destinationStore.GetAsync(cancellationToken);
         if (!chatId.HasValue)
         {
             Logger.Warn("Cannot forward message {MessageId}: no destination chat registered.", messageId);
+            return;
+        }
+
+        var client = await telegramClientProvider.CreateClientAsync(cancellationToken);
+        var fromPeer = await sourcePeerResolver.ResolveAsync(sourceChatId, cancellationToken);
+        if (fromPeer == null)
+        {
+            Logger.Warn("Cannot resolve source peer for chat {SourceChatId}; falling back to text.", sourceChatId);
+            await SendTextToChatAsync(chatId.Value, message.Text.Value, cancellationToken);
             return;
         }
 
@@ -111,19 +124,82 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
             return;
         }
 
-        var client = await telegramClientProvider.CreateClientAsync(cancellationToken);
-        var randomId = DateTime.UtcNow.Ticks;
+        var chatInfo = await sourcePeerResolver.GetChatInfoAsync(sourceChatId, cancellationToken);
+        var link = BuildMessageLink(sourceChatId, messageId, chatInfo);
+        var infoMessage = BuildInfoMessage(chatInfo, link);
 
         try
         {
+            await SendTextToChatAsync(chatId.Value, infoMessage, ParseMode.MarkdownV2, cancellationToken);
+            
+            var randomId = DateTime.UtcNow.Ticks;
             await client.Messages_ForwardMessages(fromPeer, new[] { messageId }, new[] { randomId }, toPeer);
-            Logger.Debug("Forwarded message {MessageId} via MTProto.", messageId);
+            Logger.Debug("Forwarded message {MessageId} via MTProto with info message.", messageId);
         }
         catch (Exception ex)
         {
             Logger.Warn(ex, "MTProto forward failed for message {MessageId}; falling back to text.", messageId);
             await SendTextToChatAsync(chatId.Value, message.Text.Value, cancellationToken);
         }
+    }
+
+    private static string BuildMessageLink(long sourceChatId, int messageId, SourceChatInfo? chatInfo)
+    {
+        if (chatInfo?.Username != null)
+        {
+            return $"https://t.me/{chatInfo.Username}/{messageId}";
+        }
+
+        long chatIdForLink = chatInfo?.ChatId ?? sourceChatId;
+        if (chatIdForLink < 0)
+        {
+            var fullId = -chatIdForLink;
+            if (fullId > 1000000000000)
+            {
+                chatIdForLink = fullId - 1000000000000;
+            }
+            else
+            {
+                chatIdForLink = fullId;
+            }
+        }
+
+        return $"https://t.me/c/{chatIdForLink}/{messageId}";
+    }
+
+    private static string BuildInfoMessage(SourceChatInfo? chatInfo, string link)
+    {
+        var chatName = EscapeMarkdownV2(chatInfo?.Name ?? "Unknown");
+        return $"📨 Forwarded from: {chatName}\n🔗 [Open original message]({link})";
+    }
+
+    private static string EscapeMarkdownV2(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        return text
+            .Replace("\\", "\\\\")
+            .Replace("_", "\\_")
+            .Replace("*", "\\*")
+            .Replace("[", "\\[")
+            .Replace("]", "\\]")
+            .Replace("(", "\\(")
+            .Replace(")", "\\)")
+            .Replace("~", "\\~")
+            .Replace("`", "\\`")
+            .Replace(">", "\\>")
+            .Replace("#", "\\#")
+            .Replace("+", "\\+")
+            .Replace("-", "\\-")
+            .Replace("=", "\\=")
+            .Replace("|", "\\|")
+            .Replace("{", "\\{")
+            .Replace("}", "\\}")
+            .Replace(".", "\\.")
+            .Replace("!", "\\!");
     }
 
     private async Task<InputPeer?> GetBotInputPeerAsync(CancellationToken cancellationToken)
@@ -159,10 +235,10 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
             var resolved = await client.Contacts_ResolveUsername(botUsername.Trim().TrimStart('@'));
             if (resolved?.peer is PeerUser peerUser)
             {
-                var user = resolved.users?.FirstOrDefault(u => u.Value.id == peerUser.user_id);
-                if (user?.Value != null)
+                var user = resolved.users?.FirstOrDefault(u => u.Value.id == peerUser.user_id).Value;
+                if (user != null)
                 {
-                    cachedBotPeer = new InputPeerUser(user.Value.Value.id, user.Value.Value.access_hash);
+                    cachedBotPeer = new InputPeerUser(user.id, user.access_hash);
                     return cachedBotPeer;
                 }
             }
@@ -201,6 +277,11 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
 
     private async Task SendTextToChatAsync(long chatId, string text, CancellationToken cancellationToken)
     {
+        await SendTextToChatAsync(chatId, text, null, cancellationToken);
+    }
+
+    private async Task SendTextToChatAsync(long chatId, string text, ParseMode? parseMode, CancellationToken cancellationToken)
+    {
         var botToken = secretProvider.GetSecret(BotTokenSecretKey) ?? throw new Exception("Bot token environment variable is required.");
         var client = new TelegramBotClient(botToken, cancellationToken: cancellationToken);
 
@@ -212,7 +293,8 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
             {
                 var request = new SendMessageRequest() {
                     ChatId = new ChatId(chatId),
-                    Text = text
+                    Text = text,
+                    ParseMode = parseMode ?? ParseMode.None
                 };
                 await client.SendRequest(request, cancellationToken);
                 return;

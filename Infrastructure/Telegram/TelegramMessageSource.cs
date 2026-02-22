@@ -65,7 +65,7 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
                             continue;
                         }
 
-                        var forwardContext = TryBuildForwardContext(updatesBase, message);
+                        var forwardContext = (chatMessage.ChatId.Value, message.ID);
                         await channel.Writer.WriteAsync((chatMessage, forwardContext), cancellationToken);
                     }
                 };
@@ -118,38 +118,5 @@ public sealed class TelegramMessageSource : IMessageSource, IAsyncDisposable
         return new ChatMessage(messageId, chatId, senderId, text, occurredAtUtc, isOutgoing);
     }
 
-    private static object? TryBuildForwardContext(UpdatesBase updatesBase, Message message)
-    {
-        var inputPeer = TryGetInputPeer(updatesBase, message.Peer);
-        if (inputPeer == null)
-        {
-            return null;
-        }
-
-        return (inputPeer, message.ID);
-    }
-
-    private static InputPeer? TryGetInputPeer(UpdatesBase updatesBase, Peer peer)
-    {
-        switch (peer)
-        {
-            case PeerChannel peerChannel:
-                if (updatesBase.Chats?.FirstOrDefault(c => c.Value is Channel ch && ch.id == peerChannel.channel_id).Value is not Channel channel) {
-                    return null;
-                }
-                return new InputPeerChannel(channel.id, channel.access_hash);
-            case PeerChat peerChat:
-                return new InputPeerChat(peerChat.chat_id);
-            case PeerUser peerUser:
-                var user = updatesBase.Users?.FirstOrDefault(u => u.Value.id == peerUser.user_id);
-                if (user?.Value == null)
-                {
-                    return null;
-                }
-                return new InputPeerUser(user.Value.Value.id, user.Value.Value.access_hash);
-            default:
-                return null;
-        }
-    }
 }
 

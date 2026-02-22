@@ -42,7 +42,9 @@ builder.Services.AddSingleton<ICommandHandler, SourcesCommandHandler>();
 builder.Services.AddSingleton<ICommandHandler, WhitelistCommandHandler>();
 builder.Services.AddSingleton<ICommandHandler, BlacklistCommandHandler>();
 builder.Services.AddSingleton<ICommandHandler, ListChatsCommandHandler>();
-builder.Services.AddSingleton<IChatListProvider, TelegramChatListProvider>();
+builder.Services.AddSingleton<TelegramChatListProvider>();
+builder.Services.AddSingleton<IChatListProvider>(sp => sp.GetRequiredService<TelegramChatListProvider>());
+builder.Services.AddSingleton<ISourcePeerResolver>(sp => sp.GetRequiredService<TelegramChatListProvider>());
 builder.Services.AddSingleton<ICommandHandlerRegistry>(sp =>
 {
     var handlers = sp.GetServices<ICommandHandler>().ToArray();
