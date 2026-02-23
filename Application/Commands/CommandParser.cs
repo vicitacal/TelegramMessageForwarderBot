@@ -28,8 +28,15 @@ public sealed class CommandParser : ICommandParser
             return false;
         }
 
-        var arguments = parts.Length > 1 ? parts[1..].ToArray() : Array.Empty<string>();
+        var arguments = parts.Length > 1 ? parts[1..].Select(ReplaceWhiteSpaces).ToArray() : Array.Empty<string>();
         command = new Command(name, arguments);
         return true;
     }
+
+    private string ReplaceWhiteSpaces(string arg) {
+        var escaped = arg.Replace(@"\_", "&unLine;");
+        var spaced = escaped.Replace('_', ' ');
+        return spaced.Replace("&unLine;", "_");
+    }
+
 }

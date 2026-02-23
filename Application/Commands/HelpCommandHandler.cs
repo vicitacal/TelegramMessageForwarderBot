@@ -11,16 +11,24 @@ public sealed class HelpCommandHandler : ICommandHandler
     private const string HelpMessage = "Commands:\n/start - Register this chat for receiving forwarded messages\n/help - Show this help\n/users list|add|remove [user_id] - Allowed users\n/listchats - List all chat IDs with names (from Telegram)\n/sources list|add|remove [chat_id] - Source chats to forward from\n/whitelist list|add|remove <chat_id> [words...] - Whitelist words (always forward)\n/blacklist list|add|remove <chat_id> [words...] - Blacklist words (never forward)";
 
     private readonly IResponseSender responseSender;
+    private readonly IBotKeyboardProvider keyboardProvider;
 
-    public HelpCommandHandler(IResponseSender responseSender)
+    public HelpCommandHandler(IResponseSender responseSender, IBotKeyboardProvider keyboardProvider)
     {
         this.responseSender = responseSender ?? throw new ArgumentNullException(nameof(responseSender));
+        this.keyboardProvider = keyboardProvider ?? throw new ArgumentNullException(nameof(keyboardProvider));
     }
 
     public string CommandName => HelpCommandName;
 
     public async Task HandleAsync(Command command, ChatMessage message, CancellationToken cancellationToken)
     {
-        await responseSender.SendAsync(HelpMessage, cancellationToken);
+        await responseSender.SendAsync(
+            new BotResponse
+            {
+                Text = HelpMessage,
+                Keyboard = keyboardProvider.GetMainMenuKeyboard()
+            },
+            cancellationToken);
     }
 }

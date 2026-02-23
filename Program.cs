@@ -1,23 +1,29 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TelegramMessageForwarder.Application.Bot;
+using TelegramMessageForwarder.Application.Chats;
 using TelegramMessageForwarder.Application.Commands;
 using TelegramMessageForwarder.Application.Configuration;
-using TelegramMessageForwarder.Application.Messaging;
 using TelegramMessageForwarder.Application.Messages;
+using TelegramMessageForwarder.Application.Messaging;
 using TelegramMessageForwarder.Application.Secrets;
 using TelegramMessageForwarder.Infrastructure.Bot;
 using TelegramMessageForwarder.Infrastructure.Configuration;
 using TelegramMessageForwarder.Infrastructure.Secrets;
 using TelegramMessageForwarder.Infrastructure.Telegram;
-using TelegramMessageForwarder.Application.Chats;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 const string DefaultConfigFilePath = "config.json";
 var configFilePath = args.Length > 0 ? args[0] : DefaultConfigFilePath;
 
-builder.Services.AddSingleton<ISecretProvider, EnvironmentSecretProvider>();
+builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+                     .AddEnvironmentVariables()
+                     .AddCommandLine(args);
+
+builder.Services.AddSingleton<ISecretProvider, ConfigurationSecretProvider>();
 builder.Services.AddSingleton<IInitialOwnerIdProvider, TelegramInitialOwnerIdProvider>();
 builder.Services.AddSingleton<IConfigurationRepository>(sp =>
 {
@@ -32,6 +38,7 @@ builder.Services.AddSingleton<ITelegramClientProvider, TelegramClientProvider>()
 builder.Services.AddSingleton<IMessageSource, TelegramMessageSource>();
 builder.Services.AddSingleton<IMessageSender, BotApiMessageSender>();
 builder.Services.AddSingleton<IResponseSender>(sp => (IResponseSender)sp.GetRequiredService<IMessageSender>());
+builder.Services.AddSingleton<IBotKeyboardProvider, DefaultBotKeyboardProvider>();
 builder.Services.AddSingleton<IBotUpdateReceiver, TelegramBotUpdateReceiver>();
 builder.Services.AddSingleton<IMessageProcessingUseCase, MessageProcessingUseCase>();
 builder.Services.AddSingleton<ICommandParser, CommandParser>();

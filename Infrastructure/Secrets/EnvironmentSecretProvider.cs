@@ -4,11 +4,10 @@ namespace TelegramMessageForwarder.Infrastructure.Secrets;
 
 public sealed class EnvironmentSecretProvider : ISecretProvider
 {
-    private readonly string? prefix;
-
-    public EnvironmentSecretProvider(string? prefix = null)
+    
+    public EnvironmentSecretProvider()
     {
-        this.prefix = prefix;
+
     }
 
     public string? GetSecret(string name)
@@ -18,9 +17,7 @@ public sealed class EnvironmentSecretProvider : ISecretProvider
             throw new ArgumentException("Secret name cannot be null or whitespace.", nameof(name));
         }
 
-        var environmentVariableName = prefix == null ? name : $"{prefix}{name}";
-
-        return Environment.GetEnvironmentVariable(environmentVariableName, EnvironmentVariableTarget.User);
+        return Environment.GetEnvironmentVariable(name) ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
     }
 }
 

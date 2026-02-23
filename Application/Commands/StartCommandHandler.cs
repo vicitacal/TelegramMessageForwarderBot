@@ -12,11 +12,13 @@ public sealed class StartCommandHandler : ICommandHandler
     private const string WelcomeMessage = "Welcome to Telegram Message Forwarder. Forwarded messages will appear here. Use /help for commands.";
 
     private readonly IResponseSender responseSender;
+    private readonly IBotKeyboardProvider keyboardProvider;
     private readonly IDestinationChatIdStore destinationStore;
 
-    public StartCommandHandler(IResponseSender responseSender, IDestinationChatIdStore destinationStore)
+    public StartCommandHandler(IResponseSender responseSender, IBotKeyboardProvider keyboardProvider, IDestinationChatIdStore destinationStore)
     {
         this.responseSender = responseSender ?? throw new ArgumentNullException(nameof(responseSender));
+        this.keyboardProvider = keyboardProvider ?? throw new ArgumentNullException(nameof(keyboardProvider));
         this.destinationStore = destinationStore ?? throw new ArgumentNullException(nameof(destinationStore));
     }
 
@@ -25,6 +27,12 @@ public sealed class StartCommandHandler : ICommandHandler
     public async Task HandleAsync(Command command, ChatMessage message, CancellationToken cancellationToken)
     {
         await destinationStore.SetAsync(message.ChatId.Value, cancellationToken);
-        await responseSender.SendAsync(WelcomeMessage, cancellationToken);
+        await responseSender.SendAsync(
+            new BotResponse
+            {
+                Text = WelcomeMessage,
+                Keyboard = keyboardProvider.GetMainMenuKeyboard()
+            },
+            cancellationToken);
     }
 }

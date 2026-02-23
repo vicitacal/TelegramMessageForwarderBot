@@ -14,11 +14,13 @@ public sealed class ListChatsCommandHandler : ICommandHandler
 
     private readonly IResponseSender responseSender;
     private readonly IChatListProvider chatListProvider;
+    private readonly IBotKeyboardProvider keyboardProvider;
 
-    public ListChatsCommandHandler(IResponseSender responseSender, IChatListProvider chatListProvider)
+    public ListChatsCommandHandler(IResponseSender responseSender, IChatListProvider chatListProvider, IBotKeyboardProvider keyboardProvider)
     {
         this.responseSender = responseSender ?? throw new ArgumentNullException(nameof(responseSender));
         this.chatListProvider = chatListProvider ?? throw new ArgumentNullException(nameof(chatListProvider));
+        this.keyboardProvider = keyboardProvider ?? throw new ArgumentNullException(nameof(keyboardProvider));
     }
 
     public string CommandName => ListChatsCommandName;
@@ -33,17 +35,23 @@ public sealed class ListChatsCommandHandler : ICommandHandler
             return;
         }
 
-        var lines = chats.Select(c => $"{c.ChatId}: {EscapeName(c.Name)}");
-        var fullText = "Chat ID — Name:\n" + string.Join("\n", lines);
+        var lines = chats.Select(c => $"{c.ChatId} ({EscapeName(c.Name)})");
+        var fullText = "Chat ID (Name):\n" + string.Join("\n", lines);
 
         if (fullText.Length <= TelegramMaxMessageLength)
         {
-            await responseSender.SendAsync(fullText, cancellationToken);
+            await responseSender.SendAsync(
+                new BotResponse
+                {
+                    Text = fullText,
+                    Keyboard = keyboardProvider.GetMainMenuKeyboard()
+                },
+                cancellationToken);
             return;
         }
 
         var chunk = new System.Text.StringBuilder(TelegramMaxMessageLength - 50);
-        var header = "Chat ID — Name:\n";
+        var header = "Chat ID (Name):\n";
         chunk.Append(header);
 
         foreach (var line in lines)
@@ -51,7 +59,13 @@ public sealed class ListChatsCommandHandler : ICommandHandler
             var next = line + "\n";
             if (chunk.Length + next.Length > TelegramMaxMessageLength - 50)
             {
-                await responseSender.SendAsync(chunk.ToString().TrimEnd(), cancellationToken);
+                await responseSender.SendAsync(
+                    new BotResponse
+                    {
+                        Text = chunk.ToString().TrimEnd(),
+                        Keyboard = keyboardProvider.GetMainMenuKeyboard()
+                    },
+                    cancellationToken);
                 chunk.Clear();
                 chunk.Append(next);
             }
@@ -63,7 +77,13 @@ public sealed class ListChatsCommandHandler : ICommandHandler
 
         if (chunk.Length > header.Length)
         {
-            await responseSender.SendAsync(chunk.ToString().TrimEnd(), cancellationToken);
+            await responseSender.SendAsync(
+                new BotResponse
+                {
+                    Text = chunk.ToString().TrimEnd(),
+                    Keyboard = keyboardProvider.GetMainMenuKeyboard()
+                },
+                cancellationToken);
         }
     }
 

@@ -39,6 +39,7 @@ ScaffoldingReadMe.txt
 # Local env (secrets)
 .env
 env.local
+appsettings.json
 
 # Others
 ~$*
@@ -57,3 +58,5 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+/Properties/PublishProfiles/FolderProfile.pubxml.user
+/TelegramMessageForwarder.csproj.user

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Linq;
 using NLog;
 using TelegramMessageForwarder.Application.Bot;
 using TelegramMessageForwarder.Application.Messaging;
@@ -10,6 +11,7 @@ using Telegram.Bot;
 using Telegram.Bot.Requests;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 using TL;
 using WTelegram;
 
@@ -56,7 +58,29 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
             return;
         }
 
-        await SendTextToChatAsync(chatId.Value, text, cancellationToken);
+        await SendToChatAsync(new BotResponse { Text = text }, chatId.Value, cancellationToken);
+    }
+
+    public async Task SendAsync(BotResponse response, CancellationToken cancellationToken)
+    {
+        if (response == null)
+        {
+            throw new ArgumentNullException(nameof(response));
+        }
+
+        if (string.IsNullOrEmpty(response.Text))
+        {
+            throw new ArgumentException("Response text cannot be null or empty.", nameof(response));
+        }
+
+        var chatId = await destinationStore.GetAsync(cancellationToken);
+        if (chatId == null)
+        {
+            Logger.Warn("Cannot send response: no destination chat registered. User must send /start to the bot first.");
+            return;
+        }
+
+        await SendToChatAsync(response, chatId.Value, cancellationToken);
     }
 
     public Task SendToChatAsync(string text, long chatId, CancellationToken cancellationToken)
@@ -71,7 +95,27 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
             throw new ArgumentException("Chat identifier must be non-zero.", nameof(chatId));
         }
 
-        return SendTextToChatAsync(chatId, text, cancellationToken);
+        return SendToChatAsync(new BotResponse { Text = text }, chatId, cancellationToken);
+    }
+
+    public Task SendToChatAsync(BotResponse response, long chatId, CancellationToken cancellationToken)
+    {
+        if (response == null)
+        {
+            throw new ArgumentNullException(nameof(response));
+        }
+
+        if (string.IsNullOrEmpty(response.Text))
+        {
+            throw new ArgumentException("Response text cannot be null or empty.", nameof(response));
+        }
+
+        if (chatId == 0)
+        {
+            throw new ArgumentException("Chat identifier must be non-zero.", nameof(chatId));
+        }
+
+        return SendTextToChatAsync(chatId, response.Text, null, response.Keyboard, cancellationToken);
     }
 
     public async Task SendAsync(ChatMessage message, object? forwardContext, CancellationToken cancellationToken)
@@ -130,8 +174,8 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
 
         try
         {
-            await SendTextToChatAsync(chatId.Value, infoMessage, ParseMode.MarkdownV2, cancellationToken);
-            
+            await SendTextToChatAsync(chatId.Value, infoMessage, ParseMode.MarkdownV2, null, cancellationToken);
+
             var randomId = DateTime.UtcNow.Ticks;
             await client.Messages_ForwardMessages(fromPeer, new[] { messageId }, new[] { randomId }, toPeer);
             Logger.Debug("Forwarded message {MessageId} via MTProto with info message.", messageId);
@@ -277,10 +321,10 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
 
     private async Task SendTextToChatAsync(long chatId, string text, CancellationToken cancellationToken)
     {
-        await SendTextToChatAsync(chatId, text, null, cancellationToken);
+        await SendTextToChatAsync(chatId, text, null, null, cancellationToken);
     }
 
-    private async Task SendTextToChatAsync(long chatId, string text, ParseMode? parseMode, CancellationToken cancellationToken)
+    private async Task SendTextToChatAsync(long chatId, string text, ParseMode? parseMode, BotKeyboard? keyboard, CancellationToken cancellationToken)
     {
         var botToken = secretProvider.GetSecret(BotTokenSecretKey) ?? throw new Exception("Bot token environment variable is required.");
         var client = new TelegramBotClient(botToken, cancellationToken: cancellationToken);
@@ -291,10 +335,25 @@ public sealed class BotApiMessageSender : IMessageSender, IResponseSender
         {
             try
             {
+                global::Telegram.Bot.Types.ReplyMarkups.ReplyKeyboardMarkup? replyMarkup = null;
+                if (keyboard != null)
+                {
+                    var rows = keyboard.Rows
+                        .Select(row => row.Select(b => new global::Telegram.Bot.Types.ReplyMarkups.KeyboardButton(b.Text)).ToArray())
+                        .ToArray();
+                    replyMarkup = new global::Telegram.Bot.Types.ReplyMarkups.ReplyKeyboardMarkup(rows)
+                    {
+                        ResizeKeyboard = keyboard.ResizeKeyboard,
+                        OneTimeKeyboard = keyboard.OneTimeKeyboard
+                    };
+                }
+
                 var request = new SendMessageRequest() {
                     ChatId = new ChatId(chatId),
                     Text = text,
-                    ParseMode = parseMode ?? ParseMode.None
+                    ParseMode = parseMode ?? ParseMode.None,
+                    LinkPreviewOptions = new LinkPreviewOptions() { IsDisabled = true },
+                    ReplyMarkup = replyMarkup
                 };
                 await client.SendRequest(request, cancellationToken);
                 return;
