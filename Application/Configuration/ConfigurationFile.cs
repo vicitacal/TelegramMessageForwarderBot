@@ -21,6 +21,6 @@ public sealed class ChatConfigurationEntry
 
     public bool IsCaseSensitive { get; set; }
 
-    public bool DefaultForwardConfig { get; set; }
+    public bool DefaultForwardConfig { get; set; } = true;
 
 }

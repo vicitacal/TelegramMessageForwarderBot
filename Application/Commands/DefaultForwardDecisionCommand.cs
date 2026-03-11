@@ -9,7 +9,9 @@ internal class DefaultForwardDecisionCommand : ICommandHandler
 
     private const string forwardWord = "forward";
     private const string discardWord = "discard";
-    private const string UsageMessage = $"Usage: /defaultForward <{forwardWord}|{discardWord}> <chat_id>";
+    private const string getWord = "get";
+    private const string setWord = "set";
+    private const string UsageMessage = $"Usage: /defaultForward {setWord} <{forwardWord}|{discardWord}> <chat_id> | /defaultForward {getWord} <chat_id>";
     
     public string CommandName => "defaultForward";
 
@@ -26,25 +28,55 @@ internal class DefaultForwardDecisionCommand : ICommandHandler
             await _responseSender.SendAsync(UsageMessage, cancellationToken);
             return;
         }
-        var argument = command.Arguments[0].Trim().ToLowerInvariant();
-        bool? newForward = argument switch
+        var action = command.Arguments[0];
+        bool? actionBool = action switch
         {
-            forwardWord => true,
-            "true" => true,
-            discardWord => false,
-            "false" => false,
+            getWord => true,
+            setWord => false,
             _ => null
         };
-        if (!newForward.HasValue) {
-            await _responseSender.SendAsync($"Unable to parse argument: {argument}. {UsageMessage}", cancellationToken);
-            return;
-        }
-        if (!int.TryParse(command.Arguments[1], out var chatId))
+        if (!actionBool.HasValue)
         {
-            await _responseSender.SendAsync($"Unable to parse chat id: {command.Arguments[1]}. {UsageMessage}", cancellationToken);
+            await _responseSender.SendAsync($"Unable to parse action: {action}. {UsageMessage}", cancellationToken);
             return;
         }
-        await SetDefaultForward(chatId, newForward.Value, cancellationToken);
+
+        var chatIdString = command.Arguments[actionBool.Value ? 1 : 2];
+        if (!int.TryParse(chatIdString, out var chatId))
+        {
+            await _responseSender.SendAsync($"Unable to parse chat id: {chatIdString}. {UsageMessage}", cancellationToken);
+            return;
+        }
+
+        if (actionBool.Value)
+        {
+            var configuration = await _configurationStore.GetConfigurationAsync(cancellationToken);
+            var chatConfig = configuration.GetChatConfigurations().FirstOrDefault(c => c.SourceChatId.Value == chatId);
+            if (chatConfig == null)
+            {
+                await _responseSender.SendAsync($"Source chat {chatId} is not configured. Add it with /sources add first.", cancellationToken);
+                return;
+            }
+            await _responseSender.SendAsync($"Default forward decision for chat {chatId} is {(chatConfig.DefaultForwardDesigion ? forwardWord : discardWord)}", cancellationToken);
+            return;
+        } else
+        {
+            var argument = command.Arguments[1].Trim().ToLowerInvariant();
+            bool? newForward = argument switch
+            {
+                forwardWord => true,
+                "true" => true,
+                discardWord => false,
+                "false" => false,
+                _ => null
+            };
+            if (!newForward.HasValue) {
+                await _responseSender.SendAsync($"Unable to parse argument: {argument}. {UsageMessage}", cancellationToken);
+                return;
+            }
+            await SetDefaultForward(chatId, newForward.Value, cancellationToken);
+        }
+
     }
 
     private async Task SetDefaultForward(long chatIdValue, bool defaultForwardDecision, CancellationToken cancellationToken)
