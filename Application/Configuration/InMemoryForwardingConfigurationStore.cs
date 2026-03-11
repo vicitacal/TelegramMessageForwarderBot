@@ -16,14 +16,14 @@ public sealed class InMemoryForwardingConfigurationStore : IForwardingConfigurat
         return Task.FromResult(configuration);
     }
 
-    public Task AddOrUpdateSourceChatAsync(ChatId sourceChatId, IReadOnlyCollection<string> whitelistWords, IReadOnlyCollection<string> blacklistWords, bool isCaseSensitive, CancellationToken cancellationToken)
+    public Task AddOrUpdateSourceChatAsync(ChatId sourceChatId, IReadOnlyCollection<string> whitelistWords, IReadOnlyCollection<string> blacklistWords, bool isCaseSensitive, bool defaultForwardDesigion, CancellationToken cancellationToken)
     {
         if (sourceChatId.Value == 0)
         {
             throw new ArgumentException("Source chat identifier must be valid.", nameof(sourceChatId));
         }
 
-        var config = new ChatForwardingConfiguration(sourceChatId, whitelistWords ?? Array.Empty<string>(), blacklistWords ?? Array.Empty<string>(), isCaseSensitive);
+        var config = new ChatForwardingConfiguration(sourceChatId, whitelistWords ?? Array.Empty<string>(), blacklistWords ?? Array.Empty<string>(), isCaseSensitive, defaultForwardDesigion);
         configurations[sourceChatId.Value] = config;
         return Task.CompletedTask;
     }

@@ -114,7 +114,7 @@ public sealed class SourcesCommandHandler : ICommandHandler
     private async Task HandleAddAsync(long chatIdValue, CancellationToken cancellationToken)
     {
         var sourceChatId = new ChatId(chatIdValue);
-        await configurationStore.AddOrUpdateSourceChatAsync(sourceChatId, Array.Empty<string>(), Array.Empty<string>(), false, cancellationToken);
+        await configurationStore.AddOrUpdateSourceChatAsync(sourceChatId, Array.Empty<string>(), Array.Empty<string>(), false, true, cancellationToken);
         await responseSender.SendAsync($"Added source chat {chatIdValue}. Messages from this chat will be forwarded.", cancellationToken);
     }
 

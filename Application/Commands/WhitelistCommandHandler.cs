@@ -134,6 +134,7 @@ public sealed class WhitelistCommandHandler : ICommandHandler
             existingWhitelist,
             chatConfig.GetBlacklistWords().ToList(),
             chatConfig.IsCaseSensitive,
+            chatConfig.DefaultForwardDesigion,
             cancellationToken);
 
         await responseSender.SendAsync($"Added {words.Count} word(s) to whitelist for chat {chatIdValue}.", cancellationToken);
@@ -166,6 +167,7 @@ public sealed class WhitelistCommandHandler : ICommandHandler
             existingWhitelist,
             chatConfig.GetBlacklistWords().ToList(),
             chatConfig.IsCaseSensitive,
+            chatConfig.DefaultForwardDesigion,
             cancellationToken);
 
         await responseSender.SendAsync($"Removed {removed} word(s) from whitelist for chat {chatIdValue}.", cancellationToken);

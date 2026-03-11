@@ -20,4 +20,7 @@ public sealed class ChatConfigurationEntry
     public List<string> BlacklistWords { get; set; } = new();
 
     public bool IsCaseSensitive { get; set; }
+
+    public bool DefaultForwardConfig { get; set; }
+
 }

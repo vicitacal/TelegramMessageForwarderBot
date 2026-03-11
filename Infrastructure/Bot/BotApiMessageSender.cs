@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Linq;
 using NLog;
 using TelegramMessageForwarder.Application.Bot;
 using TelegramMessageForwarder.Application.Messaging;
@@ -11,9 +10,7 @@ using Telegram.Bot;
 using Telegram.Bot.Requests;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.ReplyMarkups;
 using TL;
-using WTelegram;
 
 namespace TelegramMessageForwarder.Infrastructure.Bot;
 

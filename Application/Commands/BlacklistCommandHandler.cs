@@ -1,6 +1,3 @@
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using TelegramMessageForwarder.Application.Configuration;
 using TelegramMessageForwarder.Application.Messaging;
 using TelegramMessageForwarder.Domain.Messages;
@@ -134,6 +131,7 @@ public sealed class BlacklistCommandHandler : ICommandHandler
             chatConfig.GetWhitelistWords().ToList(),
             existingBlacklist,
             chatConfig.IsCaseSensitive,
+            chatConfig.DefaultForwardDesigion,
             cancellationToken);
 
         await responseSender.SendAsync($"Added {words.Count} word(s) to blacklist for chat {chatIdValue}.", cancellationToken);
@@ -166,6 +164,7 @@ public sealed class BlacklistCommandHandler : ICommandHandler
             chatConfig.GetWhitelistWords().ToList(),
             existingBlacklist,
             chatConfig.IsCaseSensitive,
+            chatConfig.DefaultForwardDesigion,
             cancellationToken);
 
         await responseSender.SendAsync($"Removed {removed} word(s) from blacklist for chat {chatIdValue}.", cancellationToken);

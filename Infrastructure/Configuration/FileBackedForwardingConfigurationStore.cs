@@ -24,12 +24,13 @@ public sealed class FileBackedForwardingConfigurationStore : IForwardingConfigur
                 new ChatId(e.SourceChatId),
                 e.WhitelistWords ?? new List<string>(),
                 e.BlacklistWords ?? new List<string>(),
-                e.IsCaseSensitive))
+                e.IsCaseSensitive,
+                e.DefaultForwardConfig))
             .ToList();
         return new ForwardingConfiguration(chatConfigurations);
     }
 
-    public async Task AddOrUpdateSourceChatAsync(ChatId sourceChatId, IReadOnlyCollection<string> whitelistWords, IReadOnlyCollection<string> blacklistWords, bool isCaseSensitive, CancellationToken cancellationToken)
+    public async Task AddOrUpdateSourceChatAsync(ChatId sourceChatId, IReadOnlyCollection<string> whitelistWords, IReadOnlyCollection<string> blacklistWords, bool isCaseSensitive, bool defaultForwardConfig, CancellationToken cancellationToken)
     {
         if (sourceChatId.Value == 0)
         {
@@ -48,7 +49,8 @@ public sealed class FileBackedForwardingConfigurationStore : IForwardingConfigur
             SourceChatId = sourceChatId.Value,
             WhitelistWords = (whitelistWords ?? Array.Empty<string>()).ToList(),
             BlacklistWords = (blacklistWords ?? Array.Empty<string>()).ToList(),
-            IsCaseSensitive = isCaseSensitive
+            IsCaseSensitive = isCaseSensitive,
+            DefaultForwardConfig = defaultForwardConfig
         });
 
         await repository.SaveAsync(data, cancellationToken);

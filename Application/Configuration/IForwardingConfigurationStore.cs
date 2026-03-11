@@ -10,7 +10,7 @@ public interface IForwardingConfigurationStore
 {
     Task<ForwardingConfiguration> GetConfigurationAsync(CancellationToken cancellationToken);
 
-    Task AddOrUpdateSourceChatAsync(ChatId sourceChatId, IReadOnlyCollection<string> whitelistWords, IReadOnlyCollection<string> blacklistWords, bool isCaseSensitive, CancellationToken cancellationToken);
+    Task AddOrUpdateSourceChatAsync(ChatId sourceChatId, IReadOnlyCollection<string> whitelistWords, IReadOnlyCollection<string> blacklistWords, bool isCaseSensitive, bool defaultForwardDecision, CancellationToken cancellationToken);
 
     Task RemoveSourceChatAsync(ChatId sourceChatId, CancellationToken cancellationToken);
 }

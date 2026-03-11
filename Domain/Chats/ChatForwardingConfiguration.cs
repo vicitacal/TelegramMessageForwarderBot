@@ -13,7 +13,8 @@ public sealed class ChatForwardingConfiguration
         ChatId sourceChatId,
         IReadOnlyCollection<string> whitelistWords,
         IReadOnlyCollection<string> blacklistWords,
-        bool isCaseSensitive)
+        bool isCaseSensitive,
+        bool defaultForwardDecision)
     {
         if (sourceChatId.Value == 0)
         {
@@ -26,11 +27,14 @@ public sealed class ChatForwardingConfiguration
         this.blacklistWords = NormalizeWords(blacklistWords);
 
         IsCaseSensitive = isCaseSensitive;
+        DefaultForwardDesigion = defaultForwardDecision;
     }
 
     public ChatId SourceChatId { get; }
 
     public bool IsCaseSensitive { get; }
+
+    public bool DefaultForwardDesigion { get; }
 
     public IReadOnlyCollection<string> GetWhitelistWords()
     {
@@ -73,7 +77,7 @@ public sealed class ChatForwardingConfiguration
             return new ForwardingDecision(false, ForwardingDecisionReason.Blacklisted);
         }
 
-        return new ForwardingDecision(true, ForwardingDecisionReason.DefaultForward);
+        return new ForwardingDecision(DefaultForwardDesigion, ForwardingDecisionReason.DefaultForward);
     }
 
     private static IReadOnlyCollection<string> NormalizeWords(IReadOnlyCollection<string> words)
